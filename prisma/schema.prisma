@@ -1,0 +1,62 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // o "postgresql" según tu preferencia
+  url      = env("DATABASE_URL")
+}
+
+model Opening {
+  id        String   @id @default(cuid())
+  fen       String   @unique
+  src       String
+  eco       String
+  moves     String
+  name      String
+  scid      String?
+  isEcoRoot Boolean? @default(false)
+  
+  // Relaciones
+  aliases    Alias[]
+  fromTransitions FromTo[] @relation("FromOpening")
+  toTransitions   FromTo[] @relation("ToOpening")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([eco])
+  @@index([src])
+  @@index([fen])
+}
+
+model Alias {
+  id         String   @id @default(cuid())
+  source     String   // ej: "scid", "eco_wikip", "ct", etc.
+  value      String
+  openingId  String
+  opening    Opening  @relation(fields: [openingId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
+  @@unique([openingId, source, value])
+}
+
+model FromTo {
+  id        String   @id @default(cuid())
+  fromFen   String
+  toFen     String
+  fromSrc   String
+  toSrc     String
+  
+  // Relaciones opcionales a Opening
+  fromOpening Opening? @relation("FromOpening", fields: [fromFen], references: [fen])
+  toOpening   Opening? @relation("ToOpening", fields: [toFen], references: [fen])
+  
+  createdAt DateTime @default(now())
+
+  @@index([fromFen])
+  @@index([toFen])
+}
