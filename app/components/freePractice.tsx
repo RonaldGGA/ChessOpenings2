@@ -7,10 +7,26 @@ import {
   PieceDropHandlerArgs,
   SquareHandlerArgs,
 } from "react-chessboard";
+import { Opening } from "@prisma/client";
+import Link from "next/link";
+import { ArrowRight, RotateCw } from "lucide-react";
+
+interface StockfishMove {
+  Move: string;
+  Centipawn: number;
+  Mate: number | null;
+}
+
+interface StockfishAnalysis {
+  BestMove: string;
+  Moves: StockfishMove[];
+}
 
 const FreePractice = () => {
   // create a chess game using a ref to always have access to the latest game state within closures and maintain the game state across renders
   const chessGameRef = useRef(new Chess());
+  const [relatedOpenings, setRelatedOpenings] = useState<Opening[]>([]);
+  const [moveAnalysis, setMoveAnalysis] = useState<StockfishAnalysis | null>(null);
 
   // track the current position of the chess game in state to trigger a re-render of the chessboard
   const [chessPosition, setChessPosition] = useState("start");
@@ -147,7 +163,7 @@ const FreePractice = () => {
     setChessPosition(chessGame.fen());
 
     // make random cpu move after a short delay
-    setTimeout(makeRandomMove, 300);
+    // setTimeout(makeRandomMove, 300);
 
     // clear moveFrom and optionSquares
     setMoveFrom("");
@@ -197,20 +213,134 @@ const FreePractice = () => {
     id: "click-or-drag-to-move",
   };
 
+  // Function to analyze position with Stockfish
+  const analyzePosition = async (fen: string) => {
+    try {
+      // Use local server-side proxy to avoid CORS and hide API key
+      const response = await fetch('/api/stockfish', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fen, depth: 20, mode: 'bestmoves', multipv: 10 }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Stockfish proxy error: ${response.status} ${text}`);
+      }
+
+      const data = await response.json();
+      setMoveAnalysis(data as StockfishAnalysis);
+    } catch (error) {
+      console.error('Error analyzing position:', error);
+      setMoveAnalysis(null);
+    }
+  };
+
+  // Function to fetch related openings
+  const fetchRelatedOpenings = async (fen: string) => {
+    try {
+      const response = await fetch(`/api/openings?fen=${encodeURIComponent(fen)}`);
+      const data = await response.json();
+      setRelatedOpenings(data.openings || []);
+    } catch (error) {
+      console.error('Error fetching related openings:', error);
+    }
+  };
+
+  // Update analysis and openings when position changes
+  useEffect(() => {
+    if (chessPosition !== 'start') {
+      const runAsync = async () => {
+        await analyzePosition(chessPosition);
+        await fetchRelatedOpenings(chessPosition);
+      };
+      runAsync();
+    }
+  }, [chessPosition]);
+
   // render the chessboard
   if (chessPosition === "start") {
     return <span>Loading...</span>;
   }
+
   return (
-    <div>
-      {/*Controls - most include 1.go back 2.change perspective 3.reset game*/}
-     <div></div>
-      {/*Related openings to the real-time position as a link to go to /practice/[id] of that opening*/}
-      <div></div>
-      {/*Practice board*/}
-      <Chessboard options={chessboardOptions} />
-      {/*Best next moves with their statistics max 15*/}
-      <div></div>
+    <div className="grid grid-cols-12 gap-4 p-4 bg-slate-900 min-h-screen">
+      {/* Related Openings - Left Panel */}
+      <div className="col-span-3 bg-slate-800 rounded-lg p-4">
+        <h2 className="text-xl font-bold text-yellow-400 mb-4">Related Openings</h2>
+        <div className="space-y-2">
+          {relatedOpenings.map((opening) => (
+            <Link 
+              key={opening.id}
+              href={`/practice/${opening.id}`}
+              className="block p-3 bg-slate-700 rounded-lg hover:bg-slate-600 transition-all group"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-white group-hover:text-yellow-400">
+                    {opening.name}
+                  </h3>
+                  <p className="text-sm text-gray-400">{opening.eco}</p>
+                </div>
+                <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-yellow-400" />
+              </div>
+            </Link>
+          ))}
+          {relatedOpenings.length === 0 && (
+            <p className="text-gray-400 text-center py-4">No related openings found</p>
+          )}
+        </div>
+      </div>
+
+      {/* Main Board - Center */}
+      <div className="col-span-6">
+        <div className="bg-slate-800 rounded-lg p-4">
+          {/* Controls */}
+          <div className="flex justify-center gap-4 mb-4">
+            <button
+              onClick={() => {
+                chessGameRef.current = new Chess();
+                setChessPosition(chessGameRef.current.fen());
+              }}
+              className="px-4 py-2 bg-yellow-500 text-slate-900 rounded-lg hover:bg-yellow-400 transition-colors flex items-center gap-2"
+            >
+              <RotateCw className="h-4 w-4" />
+              Reset
+            </button>
+          </div>
+          
+          {/* Chessboard */}
+          <Chessboard options={chessboardOptions} />
+        </div>
+      </div>
+
+      {/* Move Analysis - Right Panel */}
+      <div className="col-span-3 bg-slate-800 rounded-lg p-4">
+        <h2 className="text-xl font-bold text-yellow-400 mb-4">Best Moves</h2>
+        <div className="space-y-2">
+          {moveAnalysis?.Moves.map((move, index) => (
+            <div 
+              key={index}
+              className="p-3 bg-slate-700 rounded-lg flex justify-between items-center"
+            >
+              <div>
+                <span className="text-white font-mono">{move.Move}</span>
+                <p className="text-sm text-gray-400">
+                  {move.Mate !== null 
+                    ? `Mate in ${move.Mate}`
+                    : `CP: ${(move.Centipawn / 100).toFixed(2)}`
+                  }
+                </p>
+              </div>
+            </div>
+          ))}
+          {!moveAnalysis && (
+            <p className="text-gray-400 text-center py-4">Analyzing position...</p>
+          )}
+        </div>
+      </div>
     </div>
   );
   // return (
