@@ -91,7 +91,7 @@ export default function OpeningPracticeClient({
     setOrientation((prev) => (prev === 'white' ? 'black' : 'white'));
 
   const goToFreePractice = () => {
-    window.location.href = `/practice/${opening.id}/free`;
+    window.location.href = `/`;
   };
 
   const currentPosition = moveHistory[currentMoveIndex] ?? moveHistory[0] ?? 'start';

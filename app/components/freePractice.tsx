@@ -11,200 +11,195 @@ import { Opening } from "@prisma/client";
 import Link from "next/link";
 import { ArrowRight, RotateCw } from "lucide-react";
 
-interface StockfishMove {
-  Move: string;
-  Centipawn: number;
-  Mate: number | null;
-}
-
 interface StockfishAnalysis {
-  BestMove: string;
-  Moves: StockfishMove[];
+  bestMove: string;
+  ponder: string;
+  evaluation: string;
+  continuation: string;
+  mate: string | null;
 }
 
 const FreePractice = () => {
-  // create a chess game using a ref to always have access to the latest game state within closures and maintain the game state across renders
   const chessGameRef = useRef(new Chess());
   const [relatedOpenings, setRelatedOpenings] = useState<Opening[]>([]);
   const [moveAnalysis, setMoveAnalysis] = useState<StockfishAnalysis | null>(null);
-
-  // track the current position of the chess game in state to trigger a re-render of the chessboard
   const [chessPosition, setChessPosition] = useState("start");
   const [moveFrom, setMoveFrom] = useState("");
   const [optionSquares, setOptionSquares] = useState({});
+  const [movesHistory, setMovesHistory] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     setChessPosition(chessGameRef.current.fen());
   }, []);
 
-  // make a random "CPU" move
-  function makeRandomMove() {
-    const chessGame = chessGameRef.current;
+  // Function to analyze position with Stockfish
+  const analyzePosition = async (fen: string) => {
+    setIsAnalyzing(true);
+    try {
+      const response = await fetch(
+        `https://stockfish.online/api/s/v2.php?fen=${encodeURIComponent(fen)}&depth=13`
+      );
 
-    // get all possible moves`
-    const possibleMoves = chessGame.moves();
+      if (!response.ok) {
+        throw new Error(`Stockfish error: ${response.status}`);
+      }
 
-    // exit if the game is over
-    if (chessGame.isGameOver()) {
-      return;
+      const data = await response.json();
+
+      if (!data.success) {
+        throw new Error("Error analyzing the position");
+      }
+
+      // Parse the bestmove string correctly
+      const bestMoveParts = data.bestmove?.split(" ") || [];
+      const newData: StockfishAnalysis = {
+        bestMove: bestMoveParts[1] || "",
+        ponder: bestMoveParts[3] || "",
+        evaluation: data.evaluation || "0",
+        continuation: data.continuation || "",
+        mate: data.mate,
+      };
+      setMoveAnalysis(newData);
+    } catch (error) {
+      console.error("Error analyzing position:", error);
+      setMoveAnalysis(null);
+    } finally {
+      setIsAnalyzing(false);
     }
+  };
 
-    // pick a random move
-    const randomMove =
-      possibleMoves[Math.floor(Math.random() * possibleMoves.length)];
+  // Function to fetch related openings
+  const fetchRelatedOpenings = async (moves: string[]) => {
+    try {
+      // Convert moves array to the format expected by the API
+      const response = await fetch(`/api/openings/match?moveHistory=${JSON.stringify(moves)}`);
+      const data = await response.json();
+      setRelatedOpenings(data.openings || []);
+    } catch (error) {
+      console.error("Error fetching related openings:", error);
+      setRelatedOpenings([]);
+    }
+  };
 
-    // make the move
-    chessGame.move(randomMove);
+  // Update analysis and openings when position changes
+  useEffect(() => {
+    if (chessPosition !== "start" && !chessGameRef.current.isGameOver()) {
+      analyzePosition(chessPosition);
+      fetchRelatedOpenings(movesHistory);
+    }
+  }, [chessPosition, movesHistory]);
 
-    // update the position state
-    setChessPosition(chessGame.fen());
-  }
-
-  // get the move options for a square to show valid moves
   function getMoveOptions(square: Square) {
     const chessGame = chessGameRef.current;
-
-    // get the moves for the square
     const moves = chessGame.moves({
       square,
       verbose: true,
     });
 
-    // if no moves, clear the option squares
     if (moves.length === 0) {
       setOptionSquares({});
       return false;
     }
 
-    // create a new object to store the option squares
     const newSquares: Record<string, React.CSSProperties> = {};
 
-    // loop through the moves and set the option squares
     for (const move of moves) {
       newSquares[move.to] = {
         background:
           chessGame.get(move.to) &&
           chessGame.get(move.to)?.color !== chessGame.get(square)?.color
-            ? "radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)" // larger circle for capturing
+            ? "radial-gradient(circle, rgba(0,0,0,.1) 85%, transparent 85%)"
             : "radial-gradient(circle, rgba(0,0,0,.1) 25%, transparent 25%)",
-        // smaller circle for moving
         borderRadius: "50%",
       };
     }
 
-    // set the square clicked to move from to yellow
     newSquares[square] = {
       background: "rgba(255, 255, 0, 0.4)",
     };
 
-    // set the option squares
     setOptionSquares(newSquares);
-
-    // return true to indicate that there are move options
     return true;
   }
+
   function onSquareClick({ square, piece }: SquareHandlerArgs) {
     const chessGame = chessGameRef.current;
 
-    // piece clicked to move
+    // Piece clicked to move
     if (!moveFrom && piece) {
-      // get the move options for the square
       const hasMoveOptions = getMoveOptions(square as Square);
-
-      // if move options, set the moveFrom to the square
       if (hasMoveOptions) {
         setMoveFrom(square);
       }
-
-      // return early
       return;
     }
 
-    // square clicked to move to, check if valid move
+    // Square clicked to move to
     const moves = chessGame.moves({
       square: moveFrom as Square,
       verbose: true,
     });
     const foundMove = moves.find((m) => m.from === moveFrom && m.to === square);
 
-    // not a valid move
     if (!foundMove) {
-      // check if clicked on new piece
       const hasMoveOptions = getMoveOptions(square as Square);
-
-      // if new piece, setMoveFrom, otherwise clear moveFrom
       setMoveFrom(hasMoveOptions ? square : "");
-
-      // return early
       return;
     }
 
-    // is normal move
+    // Make the move
     try {
       chessGame.move({
         from: moveFrom,
         to: square,
         promotion: "q",
       });
+
+      setChessPosition(chessGame.fen());
+      setMoveFrom("");
+      setOptionSquares({});
+      setMovesHistory(chessGame.history());
     } catch {
-      // if invalid, setMoveFrom and getMoveOptions
       const hasMoveOptions = getMoveOptions(square as Square);
-
-      // if new piece, setMoveFrom, otherwise clear moveFrom
-      if (hasMoveOptions) {
-        setMoveFrom(square);
-      }
-
-      // return early
-      return;
+      setMoveFrom(hasMoveOptions ? square : "");
     }
-
-    // update the position state
-    setChessPosition(chessGame.fen());
-
-    // make random cpu move after a short delay
-    // setTimeout(makeRandomMove, 300);
-
-    // clear moveFrom and optionSquares
-    setMoveFrom("");
-    setOptionSquares({});
   }
 
-  // handle piece drop
   function onPieceDrop({ sourceSquare, targetSquare }: PieceDropHandlerArgs) {
-    const chessGame = chessGameRef.current;
-    // type narrow targetSquare potentially being null (e.g. if dropped off board)
     if (!targetSquare) {
       return false;
     }
 
-    // try to make the move according to chess.js logic
+    const chessGame = chessGameRef.current;
+    
     try {
       chessGame.move({
         from: sourceSquare,
         to: targetSquare,
-        promotion: "q", // always promote to a queen for example simplicity
+        promotion: "q",
       });
 
-      // update the position state upon successful move to trigger a re-render of the chessboard
       setChessPosition(chessGame.fen());
-
-      // clear moveFrom and optionSquares
       setMoveFrom("");
       setOptionSquares({});
-
-      // make random cpu move after a short delay
-      setTimeout(makeRandomMove, 500);
-
-      // return true as the move was successful
+      setMovesHistory(chessGame.history());
       return true;
     } catch {
-      // return false as the move was not successful
       return false;
     }
   }
 
-  // set the chessboard options
+  const resetBoard = () => {
+    chessGameRef.current = new Chess();
+    setChessPosition(chessGameRef.current.fen());
+    setMovesHistory([]);
+    setMoveAnalysis(null);
+    setRelatedOpenings([]);
+    setOptionSquares({});
+    setMoveFrom("");
+  };
+
   const chessboardOptions = {
     onPieceDrop,
     onSquareClick,
@@ -213,54 +208,6 @@ const FreePractice = () => {
     id: "click-or-drag-to-move",
   };
 
-  // Function to analyze position with Stockfish
-  const analyzePosition = async (fen: string) => {
-    try {
-      // Use local server-side proxy to avoid CORS and hide API key
-      const response = await fetch('/api/stockfish', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ fen, depth: 20, mode: 'bestmoves', multipv: 10 }),
-      });
-
-      if (!response.ok) {
-        const text = await response.text();
-        throw new Error(`Stockfish proxy error: ${response.status} ${text}`);
-      }
-
-      const data = await response.json();
-      setMoveAnalysis(data as StockfishAnalysis);
-    } catch (error) {
-      console.error('Error analyzing position:', error);
-      setMoveAnalysis(null);
-    }
-  };
-
-  // Function to fetch related openings
-  const fetchRelatedOpenings = async (fen: string) => {
-    try {
-      const response = await fetch(`/api/openings?fen=${encodeURIComponent(fen)}`);
-      const data = await response.json();
-      setRelatedOpenings(data.openings || []);
-    } catch (error) {
-      console.error('Error fetching related openings:', error);
-    }
-  };
-
-  // Update analysis and openings when position changes
-  useEffect(() => {
-    if (chessPosition !== 'start') {
-      const runAsync = async () => {
-        await analyzePosition(chessPosition);
-        await fetchRelatedOpenings(chessPosition);
-      };
-      runAsync();
-    }
-  }, [chessPosition]);
-
-  // render the chessboard
   if (chessPosition === "start") {
     return <span>Loading...</span>;
   }
@@ -270,9 +217,9 @@ const FreePractice = () => {
       {/* Related Openings - Left Panel */}
       <div className="col-span-3 bg-slate-800 rounded-lg p-4">
         <h2 className="text-xl font-bold text-yellow-400 mb-4">Related Openings</h2>
-        <div className="space-y-2">
+        <div className="space-y-2 max-h-[600px] overflow-y-auto">
           {relatedOpenings.map((opening) => (
-            <Link 
+            <Link
               key={opening.id}
               href={`/practice/${opening.id}`}
               className="block p-3 bg-slate-700 rounded-lg hover:bg-slate-600 transition-all group"
@@ -283,6 +230,7 @@ const FreePractice = () => {
                     {opening.name}
                   </h3>
                   <p className="text-sm text-gray-400">{opening.eco}</p>
+                  <p className="text-xs text-gray-500 mt-1">{opening.moves}</p>
                 </div>
                 <ArrowRight className="h-4 w-4 text-gray-400 group-hover:text-yellow-400" />
               </div>
@@ -295,62 +243,74 @@ const FreePractice = () => {
       </div>
 
       {/* Main Board - Center */}
-      <div className="col-span-6">
-        <div className="bg-slate-800 rounded-lg p-4">
+      <div className="col-span-6 flex flex-col items-center">
+        <div className="bg-slate-800 rounded-lg p-4 w-full max-w-2xl">
           {/* Controls */}
           <div className="flex justify-center gap-4 mb-4">
             <button
-              onClick={() => {
-                chessGameRef.current = new Chess();
-                setChessPosition(chessGameRef.current.fen());
-              }}
+              onClick={resetBoard}
               className="px-4 py-2 bg-yellow-500 text-slate-900 rounded-lg hover:bg-yellow-400 transition-colors flex items-center gap-2"
             >
               <RotateCw className="h-4 w-4" />
-              Reset
+              Reset Board
             </button>
           </div>
           
           {/* Chessboard */}
-          <Chessboard options={chessboardOptions} />
+          <div className="flex justify-center">
+            <Chessboard options={chessboardOptions} />
+          </div>
+
+          {/* Current Moves */}
+          <div className="mt-4 p-3 bg-slate-700 rounded-lg">
+            <h3 className="text-white font-semibold mb-2">Move History</h3>
+            <p className="text-gray-300 text-sm">
+              {movesHistory.length > 0 ? movesHistory.join(", ") : "No moves yet"}
+            </p>
+          </div>
         </div>
       </div>
 
       {/* Move Analysis - Right Panel */}
       <div className="col-span-3 bg-slate-800 rounded-lg p-4">
-        <h2 className="text-xl font-bold text-yellow-400 mb-4">Best Moves</h2>
-        <div className="space-y-2">
-          {moveAnalysis?.Moves.map((move, index) => (
-            <div 
-              key={index}
-              className="p-3 bg-slate-700 rounded-lg flex justify-between items-center"
-            >
+        <h2 className="text-xl font-bold text-yellow-400 mb-4">Position Analysis</h2>
+        <div className="space-y-3 text-white">
+          {isAnalyzing ? (
+            <p className="text-gray-400 text-center py-4">Analyzing position...</p>
+          ) : moveAnalysis ? (
+            <>
               <div>
-                <span className="text-white font-mono">{move.Move}</span>
-                <p className="text-sm text-gray-400">
-                  {move.Mate !== null 
-                    ? `Mate in ${move.Mate}`
-                    : `CP: ${(move.Centipawn / 100).toFixed(2)}`
-                  }
+                <span className="font-semibold text-yellow-400">Best Move:</span>
+                <span className="ml-2">{moveAnalysis.bestMove || "N/A"}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-400">Ponder:</span>
+                <span className="ml-2">{moveAnalysis.ponder || "N/A"}</span>
+              </div>
+              <div>
+                <span className="font-semibold text-yellow-400">Evaluation:</span>
+                <span className="ml-2">{moveAnalysis.evaluation}</span>
+              </div>
+              {moveAnalysis.mate && (
+                <div>
+                  <span className="font-semibold text-yellow-400">Mate in:</span>
+                  <span className="ml-2">{moveAnalysis.mate}</span>
+                </div>
+              )}
+              <div>
+                <span className="font-semibold text-yellow-400">Continuation:</span>
+                <p className="text-sm mt-1 text-gray-300 wrap-break-words">
+                  {moveAnalysis.continuation || "N/A"}
                 </p>
               </div>
-            </div>
-          ))}
-          {!moveAnalysis && (
-            <p className="text-gray-400 text-center py-4">Analyzing position...</p>
+            </>
+          ) : (
+            <p className="text-gray-400 text-center py-4">No analysis available</p>
           )}
         </div>
       </div>
     </div>
   );
-  // return (
-  //   <div>
-
-  //     {/* Play alone in a board matching the related moves and openings */}
-  //     {/*Show the statistics of possible next moves*/}
-  //     {/*Show the related openings and allow to click and go to pracitce that opening*/}
-  //     FreePractice</div>
-  // )
 };
 
 export default FreePractice;
