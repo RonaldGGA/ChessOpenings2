@@ -1,4 +1,4 @@
-import { prisma } from '@/app/lib/db'
+import  prisma from '@/app/lib/db'
 import { NextRequest, NextResponse } from 'next/server'
 
 function formatMoveHistory(moves: string[]): string {

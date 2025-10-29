@@ -1,9 +1,7 @@
 "use client"
-import { useParams } from 'next/navigation'
 import React from 'react'
 
 const OpeningInfo = () => {
-    const {id} = useParams()
   return (
     <div>
         {/*Dinamic Page intented to change the content according to the selected opening*/}

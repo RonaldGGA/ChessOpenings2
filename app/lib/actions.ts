@@ -1,5 +1,5 @@
 import { Opening } from "@prisma/client";
-import { prisma } from "./db";
+import  prisma  from "./db";
 import { OpeningWithRelations } from "../practice/[id]/page";
 
 export async function findOpening(id: string) {
