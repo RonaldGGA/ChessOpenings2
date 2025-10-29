@@ -1,15 +1,15 @@
 {
-  "name": "new-typescript-tailwind-nextjs",
+  "name": "chess-openings",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "migrate:openings": "tsx scripts/migrateOpenings.ts",
     "db:push": "prisma db push",
-    "db:seed": "migrate:openings",
+    "db:seed": "npm run migrate:openings",
     "postinstall": "prisma generate"
   },
   "dependencies": {

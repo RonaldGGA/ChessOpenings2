@@ -42,7 +42,11 @@ export async function GET(request: NextRequest) {
     let movesArray: string[];
     try {
       movesArray = JSON.parse(moveHistory);
+      if (!Array.isArray(movesArray)) {
+        throw new Error('moveHistory debe ser un array');
+      }
     } catch (error) {
+      console.error('Error parsing moveHistory:', error);
       return NextResponse.json(
         { error: 'Formato inválido para moveHistory. Debe ser un array JSON' },
         { status: 400 }
