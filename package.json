@@ -9,8 +9,8 @@
     "lint": "eslint",
     "migrate:openings": "tsx scripts/migrateOpenings.ts",
     "db:push": "prisma db push",
-    "db:seed": "npm run migrate:openings",
-    "generate": "prisma generate"
+    "db:seed": "migrate:openings",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
