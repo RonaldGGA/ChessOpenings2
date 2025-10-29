@@ -28,11 +28,19 @@ function formatMoveHistory(moves: string[]): string {
 }
 
 export async function GET(request: NextRequest) {
+  console.log('Starting /api/openings/match request');
+  
   try {
+    // Verificar la conexión a la base de datos
+    await prisma.$queryRaw`SELECT 1`
+    console.log('Database connection verified');
+    
     const { searchParams } = new URL(request.url)
+    console.log('Search params:', Object.fromEntries(searchParams));
+    
     const moveHistory = searchParams.get('moveHistory')
-
     if (!moveHistory) {
+      console.log('Missing moveHistory parameter');
       return NextResponse.json(
         { error: 'El parámetro moveHistory es requerido' },
         { status: 400 }
@@ -43,8 +51,10 @@ export async function GET(request: NextRequest) {
     try {
       movesArray = JSON.parse(moveHistory);
       if (!Array.isArray(movesArray)) {
+        console.error('Invalid moveHistory format: not an array');
         throw new Error('moveHistory debe ser un array');
       }
+      console.log('Parsed moves:', movesArray);
     } catch (error) {
       console.error('Error parsing moveHistory:', error);
       return NextResponse.json(

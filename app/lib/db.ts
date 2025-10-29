@@ -1,19 +1,31 @@
-// lib/db.ts
 import { PrismaClient } from '@prisma/client'
 
 const prismaClientSingleton = () => {
-  return new PrismaClient({
+  const client = new PrismaClient({
     log: ['error', 'warn'],
-    errorFormat: 'minimal',
-  })
+    errorFormat: 'pretty',
+  });
+
+  // Verificar la conexión
+  client.$connect()
+    .then(() => {
+      console.log('Successfully connected to database');
+    })
+    .catch((error) => {
+      console.error('Failed to connect to database:', error);
+    });
+
+  return client;
+};
+
+declare global {
+  var prisma: PrismaClient | undefined
 }
 
-type PrismaClientSingleton = ReturnType<typeof prismaClientSingleton>
+const prisma = globalThis.prisma ?? prismaClientSingleton();
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClientSingleton | undefined
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.prisma = prisma;
 }
 
-export const prisma = globalForPrisma.prisma ?? prismaClientSingleton()
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+export { prisma };
