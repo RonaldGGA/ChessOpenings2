@@ -31,9 +31,9 @@ export async function GET(request: NextRequest) {
   console.log('Starting /api/openings/match request');
   
   try {
-    // Verificar la conexión a la base de datos
-    await prisma.$queryRaw`SELECT 1`
-    console.log('Database connection verified');
+    // // Verificar la conexión a la base de datos
+    // await prisma.$queryRaw`SELECT 1`
+    // console.log('Database connection verified');
     
     const { searchParams } = new URL(request.url)
     console.log('Search params:', Object.fromEntries(searchParams));
